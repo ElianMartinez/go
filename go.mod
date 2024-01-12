@@ -36,4 +36,5 @@ require (
 	github.com/jonboulle/clockwork v0.2.2 // indirect
 	github.com/moov-io/signedxml v1.1.1 // indirect
 	github.com/russellhaering/goxmldsig v1.4.0 // indirect
+	github.com/ucarion/c14n v0.1.0 // indirect
 )

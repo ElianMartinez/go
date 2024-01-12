@@ -6,12 +6,15 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/beevik/etree"
+	"github.com/ucarion/c14n"
 	"golang.org/x/crypto/pkcs12"
 )
 
@@ -38,6 +41,29 @@ func cargarDesdeP12(rutaArchivo, password string) (*rsa.PrivateKey, string, erro
 	return privateKey, certificadoBase64, nil
 }
 
+func generarDigestValue(xmlData string) (string, error) {
+    // Canonicalizar el XML
+    decoder := xml.NewDecoder(strings.NewReader("<valor>Amm1ch8CPTBVQu4m61mE+P1JrHI5pB+2TQN8WHh1KdG2Fs9jLX/CRvRieGOjQndkBm5lZFV6kO/Qd2AmxfDzAVCbBv3sXbW0OqsCJPWLMnAOZ4XIQbpy+yOmw9HTxCuDlqRIuCyDmTC0+iuxCjKw3g==</valor>"))
+    canonicalXML, err := c14n.Canonicalize(decoder)
+    if err != nil {
+        return "", err
+    }
+
+
+    // Crear el hash SHA256 del XML canónico
+    hasher := sha256.New()
+    _, err = hasher.Write(canonicalXML)
+    if err != nil {
+        return "", err
+    }
+    hash := hasher.Sum(nil)
+
+    // Codificar el hash en base64 para obtener el DigestValue
+    digestValueBase64 := base64.StdEncoding.EncodeToString(hash)
+
+    return digestValueBase64, nil
+}
+
 // firmarXML crea una firma digital para un documento XML.
 func firmarXML(xmlData []byte, rutaP12, password string) (string, error) {
 
@@ -52,14 +78,14 @@ func firmarXML(xmlData []byte, rutaP12, password string) (string, error) {
 		return "", err
 	}
 
-	// Calcula el DigestValue del contenido XML
-	digestHasher := sha256.New()
-	_, err = digestHasher.Write(xmlData) // xmlData es el contenido XML a firmar
+
+
+	digestValueBase64, err := generarDigestValue(string(xmlData))
 	if err != nil {
 		return "", err
 	}
 
-	digestValueBase64 := base64.StdEncoding.EncodeToString(digestHasher.Sum(nil))
+	println(digestValueBase64)
 
 	// Calcula la firma (SignatureValue)
 	firmaHasher := sha256.New()
@@ -76,25 +102,25 @@ func firmarXML(xmlData []byte, rutaP12, password string) (string, error) {
 	firmaBase64 := base64.StdEncoding.EncodeToString(firma)
 
 	// Construir estructura XML de la firma
-	firmaXML := fmt.Sprintf(`<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
-<SignedInfo>
-<CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315" />
-<SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" />
-<Reference URI="">
-<Transforms>
-<Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature" />
-</Transforms>
-<DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256" />
-<DigestValue>%s</DigestValue>
-</Reference>
-</SignedInfo>
-<SignatureValue>%s</SignatureValue>
-<KeyInfo>
-<X509Data>
-<X509Certificate>%s</X509Certificate>
-</X509Data>
-</KeyInfo>
-</Signature>`, digestValueBase64, firmaBase64, certificadoBase64)
+	firmaXML := fmt.Sprintf(`  <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+    <SignedInfo>
+      <CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315" />
+      <SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" />
+      <Reference URI="">
+        <Transforms>
+          <Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature" />
+        </Transforms>
+        <DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256" />
+        <DigestValue>%s</DigestValue>
+      </Reference>
+    </SignedInfo>
+    <SignatureValue>%s</SignatureValue>
+    <KeyInfo>
+      <X509Data>
+        <X509Certificate>%s</X509Certificate>
+      </X509Data>
+    </KeyInfo>
+  </Signature>`, digestValueBase64, firmaBase64, certificadoBase64)
 
 	firmaElement := etree.NewDocument()
 	if err := firmaElement.ReadFromString(firmaXML); err != nil {
@@ -115,7 +141,7 @@ func firmarXML(xmlData []byte, rutaP12, password string) (string, error) {
 }
 
 func main() {
-	xmlData, err := os.ReadFile("xml.xml")
+	xmlData, err := os.ReadFile("xml_sin_firm.xml")
 	if err != nil {
 		panic(err)
 	}

@@ -1,0 +1,3 @@
+# gitignore for nodejs
+
+/node_modules
